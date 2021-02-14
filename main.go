@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -15,13 +19,16 @@ const discordTokenEnv = "DISCORD_TOKEN"
 var (
 	discordChannel    string
 	savedGameLocation string
+	backupInterval    int
 	once              bool
 )
 
 func init() {
 	flag.StringVar(&discordChannel, "discord-channel", "", "discord channel")
 	flag.StringVar(&savedGameLocation, "saved-game-location", "", "filepath to the saved games")
+	flag.IntVar(&backupInterval, "backup-interval", 60, "backup interval in minutes")
 	flag.BoolVar(&once, "once", false, "only run the backup once and exit program")
+
 	flag.Parse()
 }
 
@@ -41,7 +48,26 @@ func main() {
 		log.Panicf("unable to create discord session")
 	}
 
-	backupNow(dg)
+	ctx, ctxCancelFunc := context.WithCancel(context.Background())
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	go func() {
+		<-sigc
+		log.Print("Caught shutdown signal, shutting down")
+		ctxCancelFunc()
+	}()
+
+	backupIntervalDuration := time.Minute * time.Duration(backupInterval)
+	ticker := time.NewTicker(backupIntervalDuration)
+	for {
+		select {
+		case <-ticker.C:
+			backupNow(dg)
+		case <-ctx.Done():
+			ticker.Stop()
+			return
+		}
+	}
 }
 
 func backupNow(dg *discordgo.Session) {
