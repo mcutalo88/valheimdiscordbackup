@@ -10,15 +10,15 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+const discordTokenEnv = "DISCORD_TOKEN"
+
 var (
-	discordToken      string
 	discordChannel    string
 	savedGameLocation string
 	once              bool
 )
 
 func init() {
-	flag.StringVar(&discordToken, "discord-token", "", "discord api token")
 	flag.StringVar(&discordChannel, "discord-channel", "", "discord channel")
 	flag.StringVar(&savedGameLocation, "saved-game-location", "", "filepath to the saved games")
 	flag.BoolVar(&once, "once", false, "only run the backup once and exit program")
@@ -26,7 +26,12 @@ func init() {
 }
 
 func main() {
-	dg, err := discordgo.New(fmt.Sprintf("Bot %s", discordToken))
+	token := os.Getenv(discordTokenEnv)
+	if len(token) == 0 {
+		log.Panicf("DISCORD_TOKEN not set")
+	}
+
+	dg, err := discordgo.New(fmt.Sprintf("Bot %s", token))
 	if err != nil {
 		log.Panicf("Unable to create discord client")
 	}
