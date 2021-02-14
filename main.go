@@ -1,9 +1,11 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -71,51 +73,66 @@ func main() {
 }
 
 func backupNow(dg *discordgo.Session) {
-	allWorldFiles, err := prepareFilesForBackup()
+	// Create zip file for backup
+	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	backupFileName := fmt.Sprintf("valheim-backup-%s.zip", time.Now().Format("Mon Jan _2 15:04:05 MST 2006"))
+
+	file, err := os.OpenFile(backupFileName, flags, 0644)
+	if err != nil {
+		log.Fatalf("Failed to open zip for writing: %s", err)
+	}
+	defer file.Close()
+
+	// setup new zip writer
+	zipw := zip.NewWriter(file)
+	appendFilesToZip(zipw)
+	zipw.Close()
+
+	finalBackupFile, err := os.Open(backupFileName)
+	if err != nil {
+		log.Fatalf("Failed to open final backup zip: %s", err)
+	}
+	defer file.Close()
+
+	_, err = dg.ChannelMessageSendComplex(discordChannel, &discordgo.MessageSend{
+		Content: "Backing up all Valheim worlds",
+		Files: []*discordgo.File{
+			{
+				Name:        file.Name(),
+				ContentType: "application/zip",
+				Reader:      finalBackupFile,
+			},
+		},
+	})
 	if err != nil {
 		_, _ = dg.ChannelMessageSend(discordChannel, fmt.Sprintf("Error backing saved files: %s", err))
 		return
 	}
-
-	sendFiles(dg, allWorldFiles)
 }
 
-func prepareFilesForBackup() ([]*discordgo.File, error) {
-	allWorldFiles := []*discordgo.File{}
-	err := filepath.Walk(savedGameLocation, func(path string, info os.FileInfo, err error) error {
-		if path == savedGameLocation {
-			return nil
-		}
-
+func appendFilesToZip(zipw *zip.Writer) {
+	_ = filepath.Walk(savedGameLocation, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		file, err := os.Open(path)
-		if err != nil {
-			return err
-		}
+		if !info.IsDir() {
+			file, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer file.Close()
 
-		allWorldFiles = append(allWorldFiles, &discordgo.File{
-			Name:        file.Name(),
-			ContentType: "text",
-			Reader:      file,
-		})
+			wr, err := zipw.Create(info.Name())
+			if err != nil {
+				return err
+			}
+
+			if _, err := io.Copy(wr, file); err != nil {
+				return fmt.Errorf("Failed to write %s to zip: %s", info.Name(), err)
+			}
+		}
 
 		return nil
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return allWorldFiles, nil
-}
-
-func sendFiles(dg *discordgo.Session, allWorldFiles []*discordgo.File) {
-	msg, err := dg.ChannelMessageSendComplex(discordChannel, &discordgo.MessageSend{
-		Content: "Backing up all Valheim worlds",
-		Files:   allWorldFiles,
-	})
-	log.Printf("%v", msg)
-	log.Printf("%v", err)
 }
