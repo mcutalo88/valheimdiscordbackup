@@ -75,7 +75,7 @@ func main() {
 func backupNow(dg *discordgo.Session) {
 	// Create zip file for backup
 	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
-	backupFileName := fmt.Sprintf("valheim-backup-%s.zip", time.Now().Format("Mon Jan _2 15:04:05 MST 2006"))
+	backupFileName := fmt.Sprintf("valheim-backup-%d.zip", time.Now().Unix())
 
 	file, err := os.OpenFile(backupFileName, flags, 0644)
 	if err != nil {
