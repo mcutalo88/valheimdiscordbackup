@@ -59,6 +59,9 @@ func main() {
 		ctxCancelFunc()
 	}()
 
+	// Backup on start
+	backupNow(dg)
+
 	backupIntervalDuration := time.Minute * time.Duration(backupInterval)
 	ticker := time.NewTicker(backupIntervalDuration)
 	for {
@@ -73,7 +76,6 @@ func main() {
 }
 
 func backupNow(dg *discordgo.Session) {
-	// Create zip file for backup
 	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	backupFileName := fmt.Sprintf("valheim-backup-%d.zip", time.Now().Unix())
 
@@ -83,7 +85,6 @@ func backupNow(dg *discordgo.Session) {
 	}
 	defer file.Close()
 
-	// setup new zip writer
 	zipw := zip.NewWriter(file)
 	appendFilesToZip(zipw)
 	zipw.Close()
